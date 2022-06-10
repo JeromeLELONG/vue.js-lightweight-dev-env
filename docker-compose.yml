@@ -1,0 +1,19 @@
+version: '3.4'
+
+services:
+    node:
+        env_file:
+            - ./config/development.env
+        #image: node
+        build: ./node
+        container_name: node_vuejs
+        volumes:
+            - "./src/vue-tutorial-alpine-docker/:/usr/src"
+        #    - "./src/e2e/:/usr/e2e/"
+        ports:
+            - 80:3000
+        #    - 4200:4200
+        working_dir: "/usr/src/"
+        #command: "/etc/start.sh"
+        command: "npm run dev"
+        #command: tail -f /dev/null

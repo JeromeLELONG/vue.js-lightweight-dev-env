@@ -1,0 +1,168 @@
+version: '3.4'
+
+services:
+    server:
+       # image: sujets-examens-v2
+        user: '${UID}:${GID}'
+        links:
+            - smtp
+        depends_on:
+            - smtp
+            - redis
+        command: '/bin/sh /etc/start.sh'
+        working_dir: '/app/packages/sujets-examens-server'
+        volumes:
+            - ./:/app
+            - ./logs/sujets-examens-server:/var/log
+            - ./uploads/uploadedFiles:/uploadedFiles
+            - ./uploads/mockedNuxeo:/nuxeoFiles
+        ports:
+            - '4001:4001'
+            - '3000:3000'
+            - '8100:8100'
+        environment:
+            SUJETS_EXAMENS_PORT: 6000
+        env_file:
+            - ./config/${NODE_ENV}.env
+
+    postgres:
+        ports:
+            - '5432:5432'
+        command: postgres -c 'config_file=/etc/postgresql/postgresql.conf'
+        volumes:
+            - ./config/postgresql.conf:/etc/postgresql/postgresql.conf
+            - ./logs/postgres:/var/log/postgresql/data/pg_log
+            - ./backups:/backups
+            - sujets-examens-pg-data:/var/lib/postgresql/data
+            - ./uploads/uploadedFiles:/uploadedFiles
+        env_file:
+            - ./config/${NODE_ENV}.env
+
+    cas:
+        build: ./packages/sujets-examens-common
+        volumes:
+            - ./logs/sujets-examens-cas:/var/log/
+            - ./:/app
+        working_dir: "/app/packages/sujets-examens-cas"
+        command: "yarn start"
+        user: "${UID}:${GID}"
+        env_file:
+            - ./config/${NODE_ENV}.env
+        environment:
+            - CYPRESS_CACHE_FOLDER=/app/.cypress_cache
+            - CI=false
+            - CAS_PORT=4000
+        links:
+            - server
+            - app-proxy
+            - public
+    app-proxy:
+        image: node:18-alpine
+        #
+        user: '${UID}:${GID}'
+        volumes:
+            - ./:/app
+        working_dir: '/app/packages/sujets-examens-proxy'
+        ports:
+            - '81:3000'
+        command: yarn start
+        env_file:
+            - ./config/${NODE_ENV}.env
+        depends_on:
+            - server
+        links:
+            - server
+        environment:
+            AUTH_PORT: 5000
+    
+    dev-proxy:
+        image: node:18-alpine
+        #
+        user: '${UID}:${GID}'
+        volumes:
+            - ./:/app
+        working_dir: '/app/packages/sujets-examens-proxy'
+        environment:
+            PROXY_MODE: dev-proxy
+            PROXY_PORT: 3000
+        links:
+            - public
+        ports:
+            - '80:3000'
+        command: yarn start
+        env_file:
+            - ./config/${NODE_ENV}.env
+
+    redis:
+        volumes:
+            - sujets-examens-redis-data:/data
+        ports:
+            - 6379:6379
+
+    public:
+        build: ./packages/sujets-examens-common
+        user: '${UID}:${GID}'
+        volumes:
+            - ./:/app
+        ports:
+            - 3001:3000
+        working_dir: '/app/packages/sujets-examens-public'
+        command: 'yarn start'
+        env_file:
+            - ./config/${NODE_ENV}.env
+        environment:
+            CI: $CI
+        depends_on:
+            - server
+
+    common:
+        build: ./packages/sujets-examens-common
+        user: '${UID}:${GID}'
+        volumes:
+            - ./:/app
+        working_dir: '/app/packages/sujets-examens-common'
+        command: 'yarn watch'
+        env_file:
+            - ./config/${NODE_ENV}.env
+        environment:
+            CI: $CI
+
+    documentation:
+        build: ./packages/sujets-examens-common
+        user: '${UID}:${GID}'
+        volumes:
+            - ./:/app
+        working_dir: '/app/packages/sujets-examens-documentation'
+        ports:
+            - '3004:8080'
+        command: yarn start
+
+    smtp:
+        image: maildev/maildev:2.0.0-beta3
+        ports:
+            - 3002:1080
+
+    cron-jobs:
+        build: ./packages/sujets-examens-common
+        user: '${UID}:${GID}'
+        volumes:
+            - ./:/app
+            - ./logs/sujets-examens-cron-jobs:/var/log/
+        working_dir: '/app/packages/sujets-examens-server'
+        command: yarn start-cron-jobs-with-watch
+        env_file:
+            - ./config/${NODE_ENV}.env
+        depends_on:
+            - postgres
+            - redis
+
+    datawarehouse:
+        ports:
+            - 3306:3306
+        volumes:
+            - datawarehouse-dev:/var/lib/mysql
+
+volumes:
+    sujets-examens-pg-data: {}
+    sujets-examens-redis-data: {}
+    datawarehouse-dev: {}
